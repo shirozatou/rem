@@ -14,5 +14,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "rem"
-include(":rem-lib")
+include(":rem")
