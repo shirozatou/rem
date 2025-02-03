@@ -1,13 +1,17 @@
 package io.github.shirozatou.rem
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
@@ -75,4 +79,20 @@ private class Holder<T>(
             remembered = vm.remember(entryKey, value)
         }
     }
+}
+
+@Composable
+fun ScopedViewModelStore(content: @Composable () -> Unit) {
+    val viewModelStoreOwner = rememberWithViewModel {
+        object : ViewModelStoreOwner, Clearable {
+            override val viewModelStore: ViewModelStore = ViewModelStore()
+            override fun onCleared() {
+                viewModelStore.clear()
+            }
+        }
+    }
+    CompositionLocalProvider(
+        LocalViewModelStoreOwner provides viewModelStoreOwner,
+        content = content
+    )
 }
