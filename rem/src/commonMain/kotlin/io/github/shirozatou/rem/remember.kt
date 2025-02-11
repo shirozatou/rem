@@ -8,19 +8,39 @@ import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+/**
+ * remember any value like [remember] does,
+ * but it use [ViewModel] to retain value during configuration changes.
+ *
+ * If [Clearable] is returned, [Clearable.onCleared] is called for clean up.
+ *
+ * ```
+ * var flag by remember { mutableStateOf(true) }
+ * if (flag) {
+ *     val foo = rememberWithViewModel {
+ *         object : Clearable {
+ *             val data = Any()
+ *             override fun onCleared() {
+ *                 // Called on main thread once flag == false
+ *             }
+ *         }
+ *     }.data
+ * }
+ * ```
+ */
 @Composable
 fun <T : Any> rememberWithViewModel(
     key1: Any? = null,
     init: () -> T
 ): T {
     val vm = viewModel<HolderViewModel>(factory = HolderViewModel.Factory)
-//    val entryKey = rememberSaveable { vm.nextKey }
     val entryKey = currentCompositeKeyHash
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -81,6 +101,21 @@ private class Holder<T>(
     }
 }
 
+/**
+ * ```
+ * ScopedViewModelStore {
+ *     val v1 = viewModel<YourViewModel>()
+ *     val v2 = viewModel<YourViewModel>()
+ *
+ *     ScopedViewModelStore {
+ *         val v3 = viewModel<YourViewModel>()
+ *
+ *         assert(v1 === v2)
+ *         assert(v1 !== v3)
+ *     }
+ * }
+ * ```
+ */
 @Composable
 fun ScopedViewModelStore(content: @Composable () -> Unit) {
     val viewModelStoreOwner = rememberWithViewModel {

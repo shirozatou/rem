@@ -3,7 +3,6 @@ package io.github.shirozatou.rem
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
-import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import kotlin.reflect.KClass
@@ -23,11 +22,6 @@ internal class HolderViewModel private constructor() : ViewModel() {
 
     @JvmInline
     value class Entry<out T>(val value: T)
-
-    private val seq = atomic(0)
-
-    val nextKey: Any
-        get() = seq.incrementAndGet()
 
     private val map = mutableMapOf<Any, Entry<*>>()
 
