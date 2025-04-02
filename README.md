@@ -4,7 +4,7 @@ Remember any type of object with ViewModel. No Parcelable, just in-memory. (Why 
 
 ## Dependency
 
-`implementation("io.github.shirozatou:rem:1.0.2")`
+`implementation("io.github.shirozatou:rem:1.0.3")`
 
 ## Usage
 
@@ -77,6 +77,24 @@ fun ScopedViewModelStore(content: @Composable () -> Unit) {
         LocalViewModelStoreOwner provides viewModelStoreOwner,
         content = content
     )
+}
+```
+
+### Solution for LazyList
+```kotlin
+ScopedSaveableStateRegistry {
+    LazyColumn {
+        items(count = 100) {
+            val remembered = rememberSaveable {
+                Any() // You can remember any type of object here
+            }
+            val notRemembered = rememberWithViewModel {
+                Any()
+            }
+            Text(text = remembered.toString())
+            Text(text = notRemembered.toString())
+        }
+    }
 }
 ```
 

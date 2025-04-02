@@ -2,10 +2,13 @@ package io.github.shirozatou.rem
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
+import androidx.compose.runtime.saveable.SaveableStateRegistry
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
@@ -16,11 +19,14 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * remember any value like [remember] does,
+ * Remember any value like [remember] does,
  * but it use [ViewModel] to retain value during configuration changes.
  *
- * If [Clearable] is returned, [Clearable.onCleared] is called for clean up.
+ * For remember value inside LazyList(LazyColumn), see [ScopedSaveableStateRegistry].
  *
+ * If returned object is [Clearable], [Clearable.onCleared] will be called on dispose.
+ *
+ * Sample:
  * ```
  * var flag by remember { mutableStateOf(true) }
  * if (flag) {
@@ -45,7 +51,7 @@ fun <T : Any> rememberWithViewModel(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val holder = remember {
-        val entry = vm.readOrRemember<T>(entryKey, init)
+        val entry = vm.readOrRemember(entryKey, init)
         Holder(entry, vm, lifecycleOwner, entryKey, key1)
     }
     val value = holder.getRememberedValue(vm, entryKey, key1) ?: init()
@@ -53,6 +59,81 @@ fun <T : Any> rememberWithViewModel(
         holder.update(value, vm, lifecycleOwner, entryKey, key1)
     }
     return value
+}
+
+/**
+ * Sample:
+ * ```
+ * ScopedViewModelStore {
+ *     val v1 = viewModel<YourViewModel>()
+ *     val v2 = viewModel<YourViewModel>()
+ *
+ *     ScopedViewModelStore {
+ *         val v3 = viewModel<YourViewModel>()
+ *
+ *         assert(v1 === v2)
+ *         assert(v1 !== v3)
+ *     }
+ * }
+ * ```
+ */
+@Composable
+fun ScopedViewModelStore(content: @Composable () -> Unit) {
+    val viewModelStoreOwner = rememberWithViewModel {
+        object : ViewModelStoreOwner, Clearable {
+            override val viewModelStore: ViewModelStore = ViewModelStore()
+            override fun onCleared() {
+                viewModelStore.clear()
+            }
+        }
+    }
+    CompositionLocalProvider(
+        LocalViewModelStoreOwner provides viewModelStoreOwner,
+        content = content
+    )
+}
+
+/**
+ * Scope that keep saved state with ViewModel.
+ *
+ * *Workaround for LazyList currently.*
+ *
+ * Sample:
+ * ```
+ * ScopedSaveableStateRegistry {
+ *     LazyColumn {
+ *         items(count = 100) {
+ *             val remembered = rememberSaveable {
+ *                 Any() // You can remember any type of object here
+ *             }
+ *             val notRemembered = rememberWithViewModel {
+ *                 Any()
+ *             }
+ *             Text(text = remembered.toString())
+ *             Text(text = notRemembered.toString())
+ *         }
+ *     }
+ * }
+ * ```
+ */
+@Composable
+fun ScopedSaveableStateRegistry(content: @Composable () -> Unit) {
+    val holder = rememberWithViewModel {
+        object {
+            var registry = SaveableStateRegistry(null) { true }
+            fun onSaveState() {
+                val saved = registry.performSave()
+                registry = SaveableStateRegistry(saved) { true }
+            }
+        }
+    }
+    CompositionLocalProvider(
+        value = LocalSaveableStateRegistry provides holder.registry,
+        content = content,
+    )
+    DisposableEffect(holder) {
+        onDispose(holder::onSaveState)
+    }
 }
 
 private class Holder<T>(
@@ -99,35 +180,4 @@ private class Holder<T>(
             remembered = vm.remember(entryKey, value)
         }
     }
-}
-
-/**
- * ```
- * ScopedViewModelStore {
- *     val v1 = viewModel<YourViewModel>()
- *     val v2 = viewModel<YourViewModel>()
- *
- *     ScopedViewModelStore {
- *         val v3 = viewModel<YourViewModel>()
- *
- *         assert(v1 === v2)
- *         assert(v1 !== v3)
- *     }
- * }
- * ```
- */
-@Composable
-fun ScopedViewModelStore(content: @Composable () -> Unit) {
-    val viewModelStoreOwner = rememberWithViewModel {
-        object : ViewModelStoreOwner, Clearable {
-            override val viewModelStore: ViewModelStore = ViewModelStore()
-            override fun onCleared() {
-                viewModelStore.clear()
-            }
-        }
-    }
-    CompositionLocalProvider(
-        LocalViewModelStoreOwner provides viewModelStoreOwner,
-        content = content
-    )
 }

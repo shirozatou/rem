@@ -42,7 +42,7 @@ internal class HolderViewModel private constructor() : ViewModel() {
     }
 
     fun <T> readOrRemember(key: Any, supplier: () -> T): Entry<T> {
-        return readValue<T>(key) ?: remember(key, supplier())
+        return readValue(key) ?: remember(key, supplier())
     }
 
     fun forget(key: Any) {
