@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import kotlin.jvm.JvmInline
 import kotlin.reflect.KClass
 
 internal class HolderViewModel private constructor() : ViewModel() {

@@ -1,6 +1,5 @@
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
-import com.vanniktech.maven.publish.SonatypeHost
 
 plugins {
     alias(libs.plugins.androidLibrary)
@@ -13,13 +12,17 @@ plugins {
 kotlin {
     androidTarget()
     jvm()
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+    }
 
     sourceSets {
         commonMain.dependencies {
             implementation(compose.runtimeSaveable)
             implementation(compose.runtime)
-            implementation(libs.androidx.lifecycle.viewmodel.compose)
-            implementation(libs.androidx.lifecycle.runtime.compose)
+            implementation(libs.jetbrains.lifecycle.viewmodel.compose)
+            implementation(libs.jetbrains.lifecycle.runtime.compose)
         }
     }
 }
@@ -53,7 +56,6 @@ mavenPublishing {
         )
     )
     publishToMavenCentral(
-        host = SonatypeHost.CENTRAL_PORTAL,
         automaticRelease = true
     )
     signAllPublications()
