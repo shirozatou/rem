@@ -1,8 +1,8 @@
 [versions]
-agp = "8.11.1"
-kotlin = "2.1.21"
-lifecycle = "2.9.1"
-compose-plugin = "1.8.2"
+agp = "8.13.0"
+kotlin = "2.2.20"
+lifecycle = "2.9.4"
+compose-plugin = "1.9.0"
 vanniktech-maven = "0.34.0"
 
 [libraries]

@@ -5,7 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.currentCompositeKeyHash
+import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.runtime.saveable.SaveableStateRegistry
@@ -47,7 +47,7 @@ fun <T : Any> rememberWithViewModel(
     init: () -> T
 ): T {
     val vm = viewModel<HolderViewModel>(factory = HolderViewModel.Factory)
-    val entryKey = currentCompositeKeyHash
+    val entryKey = currentCompositeKeyHashCode
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val holder = remember {

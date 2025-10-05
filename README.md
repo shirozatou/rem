@@ -4,7 +4,7 @@ Remember any type of object with ViewModel. No Parcelable, just in-memory. (Why 
 
 ## Dependency
 
-`implementation("io.github.shirozatou:rem:1.0.4")`
+`implementation("io.github.shirozatou:rem:1.1.0")`
 
 ## Usage
 
