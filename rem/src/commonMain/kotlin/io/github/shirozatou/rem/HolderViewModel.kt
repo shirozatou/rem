@@ -5,9 +5,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
-import kotlin.jvm.JvmInline
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlin.reflect.KClass
 
+@OptIn(ExperimentalAtomicApi::class)
 internal class HolderViewModel private constructor() : ViewModel() {
 
     companion object Factory : ViewModelProvider.Factory {
@@ -21,17 +24,26 @@ internal class HolderViewModel private constructor() : ViewModel() {
         }
     }
 
-    @JvmInline
-    value class Entry<out T>(val value: T)
+    class Entry<out T>(val value: T)
+
+    private val seq = AtomicInt(0)
+
+    val nextKey: Int
+        get() = seq.incrementAndFetch()
 
     private val map = mutableMapOf<Any, Entry<*>>()
 
-
+    /**
+     * Read is always thread safe.
+     */
     @Suppress("UNCHECKED_CAST")
     fun <T> readValue(key: Any): Entry<T>? {
         return map[key] as? Entry<T>
     }
 
+    /**
+     * Remember new value and dispose old if it is not `value`.
+     */
     fun <T> remember(key: Any, value: T): Entry<T> {
         val v = Entry(value)
         map.put(key, v)?.let { old ->
@@ -42,34 +54,39 @@ internal class HolderViewModel private constructor() : ViewModel() {
         return v
     }
 
-    fun <T> readOrRemember(key: Any, supplier: () -> T): Entry<T> {
-        return readValue(key) ?: remember(key, supplier())
+    /**
+     * Remove entry only if it is currently mapped.
+     */
+    fun forget(key: Any, entry: Entry<*>) {
+        if (map[key] !== entry) {
+            return
+        }
+        map.remove(key)?.dispose()
     }
 
-    fun forget(key: Any) {
-        map.remove(key)?.let(::dispose)
+    private fun Entry<*>.dispose() {
+        dispose(value)
     }
 
+    /**
+     * Main scope for clear, don't cancel it.
+     */
     private val mainScope = MainScope()
-
-    private fun dispose(entry: Entry<*>) {
-        // have a rest
-        mainScope.launch {
-            entry.onDispose()
-        }
-    }
-
-    // todo
-    private fun Entry<*>.onDispose() {
-        when (value) {
-            is Clearable -> value.onCleared()
-        }
-    }
 
     override fun onCleared() {
         map.forEach {
-            dispose(it.value)
+            it.value.dispose()
         }
         map.clear()
+    }
+
+    // todo
+    fun dispose(value: Any?) {
+        // have a rest
+        mainScope.launch {
+            when (value) {
+                is Clearable -> value.onCleared()
+            }
+        }
     }
 }

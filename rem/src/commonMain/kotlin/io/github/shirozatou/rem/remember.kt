@@ -5,10 +5,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.runtime.saveable.SaveableStateRegistry
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
@@ -17,6 +17,8 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * Remember any value like [remember] does,
@@ -47,18 +49,35 @@ fun <T : Any> rememberWithViewModel(
     init: () -> T
 ): T {
     val vm = viewModel<HolderViewModel>(factory = HolderViewModel.Factory)
-    val entryKey = currentCompositeKeyHashCode
-
+    val entryKey = rememberSaveable {
+        vm.nextKey
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val holder = remember {
-        val entry = vm.readOrRemember(entryKey, init)
-        Holder(entry, vm, lifecycleOwner, entryKey, key1)
+        Holder<T>(
+            vm = vm,
+            lifecycleOwner = lifecycleOwner,
+            k = entryKey,
+            key1 = key1
+        )
     }
-    val value = holder.getRememberedValue(vm, entryKey, key1) ?: init()
+    val v = holder.getValueAtComposition(
+        currentViewModel = vm,
+        currentEntryKey = entryKey,
+        currentKey1 = key1,
+        currentLifecycleOwner = lifecycleOwner,
+        init = init
+    )
     SideEffect {
-        holder.update(value, vm, lifecycleOwner, entryKey, key1)
+        holder.onSideEffect(
+            currentViewModel = vm,
+            currentEntryKey = entryKey,
+            currentKey1 = key1,
+            currentLifecycleOwner = lifecycleOwner,
+            value = v,
+        )
     }
-    return value
+    return v
 }
 
 /**
@@ -136,48 +155,77 @@ fun ScopedSaveableStateRegistry(content: @Composable () -> Unit) {
     }
 }
 
-private class Holder<T>(
-    private var remembered: HolderViewModel.Entry<T>,
+@OptIn(ExperimentalAtomicApi::class)
+private class Holder<T : Any>(
     private var vm: HolderViewModel,
     private var lifecycleOwner: LifecycleOwner,
     private var k: Any,
     private var key1: Any?,
 ) : RememberObserver {
 
+    private var remembered = vm.readValue<T>(k)
+
+    // Composition is not thread-safe. Hold it until onSideEffect/onAbandoned called
+    private var pending = AtomicReference<T?>(null)
+
     override fun onRemembered() {}
 
     override fun onForgotten() {
+        pending.exchange(null)?.let(vm::dispose)
         if (lifecycleOwner.lifecycle.currentState >= Lifecycle.State.RESUMED) {
-            vm.forget(k)
+            remembered?.let { vm.forget(k, it) }
         }
     }
 
     override fun onAbandoned() {
-        onForgotten()
+        pending.exchange(null)?.let(vm::dispose)
     }
 
-    fun getRememberedValue(vm: HolderViewModel, entryKey: Any, key1: Any?): T? {
-        return if (vm !== this.vm || entryKey != this.k || key1 != this.key1) null else remembered.value
+    // This can be called on any thread
+    fun getValueAtComposition(
+        currentViewModel: HolderViewModel,
+        currentEntryKey: Any,
+        currentKey1: Any?,
+        currentLifecycleOwner: LifecycleOwner,
+        init: () -> T,
+    ): T {
+        val value = pending.load() ?: remembered?.value
+        val v = if (value == null ||
+            currentViewModel !== vm ||
+            currentEntryKey != k ||
+            currentKey1 != key1
+        ) {
+            val new = init()
+            val old = pending.exchange(new)
+            if (old !== new) {
+                old?.let(vm::dispose)
+            }
+            new
+        } else {
+            value
+        }
+        vm = currentViewModel
+        k = currentEntryKey
+        key1 = currentKey1
+        lifecycleOwner = currentLifecycleOwner
+        return v
     }
 
-    fun update(
+    fun onSideEffect(
+        currentViewModel: HolderViewModel,
+        currentEntryKey: Any,
+        currentKey1: Any?,
+        currentLifecycleOwner: LifecycleOwner,
         value: T,
-        vm: HolderViewModel,
-        lifecycleOwner: LifecycleOwner,
-        entryKey: Any,
-        key1: Any?,
     ) {
-        val f = vm !== this.vm || entryKey != this.k || key1 != this.key1
-        if (f) {
-            this.vm.forget(this.k)
+        vm = currentViewModel
+        k = currentEntryKey
+        key1 = currentKey1
+        lifecycleOwner = currentLifecycleOwner
+        if (remembered?.value !== value) {
+            remembered = currentViewModel.remember(currentEntryKey, value)
         }
-        this.lifecycleOwner = lifecycleOwner
-        this.vm = vm
-        this.k = entryKey
-        this.key1 = key1
-
-        if (f || value != remembered.value) {
-            remembered = vm.remember(entryKey, value)
-        }
+        // Skip if another recomposition triggered
+        pending.compareAndSet(value, null)
     }
 }
